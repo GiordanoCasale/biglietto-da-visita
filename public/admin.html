@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Pannello</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Vazirmatn:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="admin">
+  <header class="bar">
+    <a class="monogram" href="/" data-i18n="viewSite">Vedi il sito</a>
+    <div id="ui-langs"></div>
+  </header>
+
+  <!-- accesso -->
+  <section id="login" class="login-card hidden">
+    <h1 data-i18n="adminTitle">Pannello di controllo</h1>
+    <form id="login-form">
+      <label class="field">
+        <span class="field-label" data-i18n="password">Password</span>
+        <input id="login-pw" class="input" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="error-msg" role="alert"></p>
+      <button class="btn btn-primary" type="submit" data-i18n="login">Entra</button>
+    </form>
+  </section>
+
+  <!-- editor -->
+  <main id="editor" class="admin-main hidden">
+    <div class="admin-head">
+      <h1 class="admin-title" data-i18n="adminTitle">Pannello di controllo</h1>
+      <button id="logout" class="btn btn-ghost btn-sm" type="button" data-i18n="logout">Esci</button>
+    </div>
+    <div class="content-lang">
+      <span data-i18n="contentLang">Stai scrivendo in</span>
+      <div id="content-langs"></div>
+    </div>
+    <div id="editor-body"></div>
+  </main>
+
+  <div id="savebar" class="savebar hidden">
+    <div class="savebar-inner">
+      <span id="status" class="status"></span>
+      <button id="save" class="btn btn-primary" type="button" data-i18n="save">Salva modifiche</button>
+    </div>
+  </div>
+
+  <script src="common.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

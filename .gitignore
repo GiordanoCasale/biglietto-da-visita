@@ -1,0 +1,9 @@
+# Dati personali e password: restano solo sul computer / sul server
+data/
+uploads/
+
+# Varie
+node_modules/
+*.tmp
+.DS_Store
+Thumbs.db

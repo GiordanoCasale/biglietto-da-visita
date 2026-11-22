@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Biglietto da visita</title>
+  <meta name="description" content="Biglietto da visita personale">
+  <meta name="theme-color" content="#fbf6f7">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Vazirmatn:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="bar">
+    <a id="monogram" class="monogram" href="/"></a>
+    <div id="langs"></div>
+  </header>
+
+  <main class="page">
+    <p id="state" class="state" data-i18n="loading">Caricamento…</p>
+
+    <div id="content" class="hidden">
+      <section class="hero">
+        <div class="avatar" id="avatar"></div>
+        <h1 id="name"></h1>
+        <p id="headline" class="headline"></p>
+        <p id="location" class="location"></p>
+        <hr class="divider">
+        <nav id="links" class="links" aria-label="Social"></nav>
+        <div id="contact" class="contact"></div>
+      </section>
+
+      <section id="about" class="block">
+        <h2 data-i18n="about"></h2>
+        <p id="bio" class="prose"></p>
+      </section>
+
+      <section id="writing" class="block">
+        <h2 data-i18n="writing"></h2>
+        <div id="posts"></div>
+      </section>
+
+      <section id="documents" class="block">
+        <h2 data-i18n="documents"></h2>
+        <ul id="files" class="files"></ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span id="copy"></span>
+  </footer>
+
+  <script src="common.js"></script>
+  <script src="site.js"></script>
+</body>
+</html>
