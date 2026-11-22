@@ -1,6 +1,5 @@
-# Dati personali e password: restano solo sul computer / sul server
-data/
-uploads/
+# Copie esportate dal pannello: contengono i dati personali, non vanno su GitHub
+biglietto-*.json
 
 # Varie
 node_modules/

@@ -1,36 +1,45 @@
 # Biglietto da visita
 
-Sito personale in tre lingue (italiano, inglese, persiano) con un pannello per modificarlo.
+Sito personale in tre lingue (italiano, inglese, persiano), fatto solo di pagine statiche:
+funziona su GitHub Pages, senza server.
 
-## Avvio
+## Come funziona
+
+- **`admin.html` (pannello)**: si compilano foto, testi, link social, scritti e documenti.
+  Tutto viene salvato **solo nel browser** di chi lo usa (IndexedDB): nessun altro lo vede.
+- **`index.html?anteprima`**: mostra il sito con i contenuti del pannello, solo su quel dispositivo.
+- **`index.html`**: mostra la versione pubblicata (`content/profile.json`).
+  Finché non c'è, compare "Presto online".
+
+## Copie (esporta / apri)
+
+Dal pannello, "Esporta copia" scarica un file `biglietto-AAAA-MM-GG.json` con tutto dentro
+(testi, foto, documenti). Serve:
+- come backup, o per continuare su un altro dispositivo ("Apri una copia");
+- per pubblicare il sito.
+
+## Pubblicare
+
+```bash
+node strumenti/pubblica.js percorso/biglietto-AAAA-MM-GG.json
+git add content
+git commit -m "Aggiorna contenuti"
+git push
+```
+
+Lo script scrive `content/profile.json` e `content/files/`. GitHub Pages aggiorna il sito in 1–2 minuti.
+Per tornare a "Presto online" basta cancellare la cartella `content` e fare push.
+
+## Prova in locale
 
 ```bash
 node server.js
 ```
 
-- Sito: http://localhost:8080
-- Pannello: http://localhost:8080/admin
+Sito: http://localhost:8080 · Pannello: http://localhost:8080/admin.html
 
-Serve solo Node.js (nessuna installazione di pacchetti).
+## Note
 
-## Password
-
-Al primo avvio il server crea una password e la scrive in `data/password-iniziale.txt`.
-Cambiala dal pannello (sezione *Sicurezza*): il file viene cancellato automaticamente.
-In alternativa, al primo avvio puoi impostarla con la variabile `ADMIN_PASSWORD`.
-
-## Dove stanno i dati
-
-- `data/profile.json`: testi, link, scritti, elenco dei file
-- `data/auth.json`: password (cifrata)
-- `uploads/`: foto e documenti caricati
-
-Per fare un backup basta copiare le cartelle `data` e `uploads`.
-
-## Struttura
-
-- `server.js`: server, salvataggio e caricamento file
-- `public/index.html` + `site.js`: pagina pubblica
-- `public/admin.html` + `admin.js`: pannello
-- `public/common.js`: testi dell'interfaccia nelle tre lingue
-- `public/styles.css`: stile (palette rosa cipria, tema chiaro e scuro)
+- Quando cambi CSS o JS, aumenta il numero `?v=N` nei link di `index.html` e `admin.html`,
+  altrimenti i browser possono tenere per ~10 minuti la versione vecchia.
+- I testi dell'interfaccia nelle tre lingue sono in `common.js`.

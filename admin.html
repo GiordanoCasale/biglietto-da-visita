@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Il tuo biglietto da visita</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&family=Vazirmatn:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body class="admin">
+  <header class="bar">
+    <a class="monogram" href="index.html?anteprima" target="_blank" rel="noopener" data-i18n="preview">Anteprima</a>
+    <div id="ui-langs"></div>
+  </header>
+
+  <main id="editor" class="admin-main">
+    <div class="admin-head">
+      <h1 class="admin-title" data-i18n="adminTitle">Il tuo biglietto da visita</h1>
+    </div>
+    <div class="content-lang">
+      <span data-i18n="contentLang">Stai scrivendo in</span>
+      <div id="content-langs"></div>
+    </div>
+    <div id="editor-body"><p class="state" data-i18n="loading">Caricamento…</p></div>
+  </main>
+
+  <div class="savebar">
+    <div class="savebar-inner">
+      <span id="status" class="status"></span>
+      <div class="row">
+        <a class="btn btn-ghost btn-sm" href="index.html?anteprima" target="_blank" rel="noopener" data-i18n="preview">Anteprima</a>
+        <button id="export-bar" class="btn btn-primary btn-sm" type="button" data-i18n="exportBtn">Esporta copia</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="common.js?v=2"></script>
+  <script src="store.js?v=2"></script>
+  <script src="admin.js?v=2"></script>
+</body>
+</html>

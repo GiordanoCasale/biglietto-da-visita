@@ -1,14 +1,17 @@
-// Pannello per modificare il biglietto da visita.
+// Pannello del biglietto da visita: tutto viene salvato in automatico nel browser.
 (function () {
   const BV = window.BV;
-  const { el, langs, meta, safeUrl, fileSize } = BV;
+  const Store = window.Store;
+  const { el, langs, meta: langMeta, safeUrl, fileSize } = BV;
   const $ = id => document.getElementById(id);
 
   let ui = BV.storedLang();      // lingua dell'interfaccia
   let contentLang = ui;          // lingua dei testi che si stanno modificando
   let profile = null;
-  let status = 'saved';          // saved | dirty | saving | error
+  let meta = {};                 // { changedAt, exportedAt }
+  let status = 'saved';          // saved | saving | error
   const t = key => BV.t(ui, key);
+  const MAX_FILE = 20 * 1024 * 1024;
 
   const PLATFORM_ORDER = ['instagram', 'linkedin', 'tiktok', 'youtube', 'x', 'facebook', 'telegram', 'whatsapp', 'github', 'website', 'other'];
   const USER_BASES = {
@@ -16,44 +19,48 @@
     telegram: 'https://t.me/', github: 'https://github.com/', youtube: 'https://www.youtube.com/@',
     facebook: 'https://facebook.com/', linkedin: 'https://www.linkedin.com/in/',
   };
+  const L = () => ({ it: '', en: '', fa: '' });
 
-  // ---------- API ----------
-  async function api(method, url, body) {
-    const r = await fetch(url, {
-      method,
-      credentials: 'same-origin',
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    let data = null;
-    try { data = await r.json(); } catch {}
-    if (r.status === 401 && url !== '/api/login' && url !== '/api/password') { showLogin(); }
-    if (!r.ok) throw Object.assign(new Error(data?.error || String(r.status)), { status: r.status });
-    return data;
-  }
-
-  // ---------- stato di salvataggio ----------
+  // ---------- salvataggio automatico ----------
   function setStatus(s) {
     status = s;
     const n = $('status');
-    n.className = 'status' + (s === 'dirty' || s === 'saving' ? ' dirty' : '') + (s === 'error' ? ' err' : '');
-    n.textContent = t({ saved: 'saved', dirty: 'unsaved', saving: 'saving', error: 'saveError' }[s]);
-    $('save').disabled = s === 'saved' || s === 'saving';
+    n.className = 'status' + (s === 'saving' ? ' dirty' : '') + (s === 'error' ? ' err' : '');
+    n.textContent = t({ saved: 'saved', saving: 'saving', error: 'saveError' }[s]);
   }
-  const markDirty = () => setStatus('dirty');
-
-  async function save() {
-    if (!profile || status === 'saving') return;
-    profile.links.forEach(l => { l.url = normalizeLink(l); });
+  let saveTimer;
+  function markDirty() {
     setStatus('saving');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persist, 400);
+  }
+  async function persist() {
+    clearTimeout(saveTimer);
     try {
-      profile = await api('PUT', '/api/profile', profile);
+      await Store.saveDraft(profile);
+      meta.changedAt = Date.now();
+      await Store.setMeta(meta);
       setStatus('saved');
-      renderEditor();
+      renderBackupState();
     } catch {
       setStatus('error');
-      $('save').disabled = false;
     }
+  }
+
+  // URL temporanei per mostrare foto e file salvati nel browser
+  const objectUrls = new Map();
+  async function fileUrl(id) {
+    if (!id) return null;
+    if (objectUrls.has(id)) return objectUrls.get(id);
+    const blob = await Store.getFile(id);
+    const url = blob ? URL.createObjectURL(blob) : null;
+    objectUrls.set(id, url);
+    return url;
+  }
+  function forgetUrl(id) {
+    const u = objectUrls.get(id);
+    if (u) URL.revokeObjectURL(u);
+    objectUrls.delete(id);
   }
 
   // ---------- campi ----------
@@ -61,8 +68,8 @@
     return el('label', { class: 'field' }, el('span', { class: 'field-label' }, label, extra), control);
   }
   function locField(obj, key, label, { multiline = false, rows = 5, max = 200 } = {}) {
-    obj[key] ||= { it: '', en: '', fa: '' };
-    const m = meta(contentLang);
+    obj[key] = { ...L(), ...(obj[key] || {}) };
+    const m = langMeta(contentLang);
     const input = el(multiline ? 'textarea' : 'input', {
       class: 'input', dir: m.dir, lang: contentLang, maxlength: max, rows: multiline ? rows : null,
     });
@@ -75,20 +82,16 @@
   function plainField(key, label, type) {
     const input = el('input', { class: 'input', type, dir: 'ltr', maxlength: 200 });
     input.value = profile[key] || '';
-    input.addEventListener('input', () => { profile[key] = input.value; markDirty(); });
+    input.addEventListener('input', () => { profile[key] = input.value.trim(); markDirty(); });
     return field(label, input);
   }
   const panel = (title, hint, ...children) =>
     el('section', { class: 'panel' }, el('h2', { text: title }), hint ? el('p', { class: 'hint', text: hint }) : null, children);
 
-  // ---------- file ----------
-  function readBase64(blob) {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result).split(',')[1] || '');
-      r.onerror = reject;
-      r.readAsDataURL(blob);
-    });
+  function filePicker({ accept, multiple, onPick }) {
+    const input = el('input', { type: 'file', accept, multiple, class: 'hidden' });
+    input.addEventListener('change', () => { const files = [...input.files]; input.value = ''; if (files.length) onPick(files); });
+    return input;
   }
   // Ridimensiona la foto e rimuove i metadati (es. posizione GPS).
   async function resizeImage(file, max = 900) {
@@ -98,47 +101,98 @@
     c.width = Math.round(bmp.width * s);
     c.height = Math.round(bmp.height * s);
     c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    return new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
-  }
-  // Dopo un upload prende solo foto/file dal server, così le modifiche non salvate restano.
-  function mergeUploads(server) {
-    profile.photo = server.photo;
-    const titles = new Map(profile.files.map(f => [f.id, f.title]));
-    profile.files = server.files.map(f => ({ ...f, title: titles.get(f.id) || f.title }));
-  }
-  function filePicker({ accept, multiple, onPick }) {
-    const input = el('input', { type: 'file', accept, multiple, class: 'hidden' });
-    input.addEventListener('change', () => { const files = [...input.files]; input.value = ''; if (files.length) onPick(files); });
-    return input;
+    return new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error('encode'))), 'image/jpeg', 0.9));
   }
 
   // ---------- sezioni ----------
+  function backupPanel() {
+    const msg = el('span', { class: 'muted', id: 'backup-msg' });
+    const picker = filePicker({
+      accept: '.json,application/json',
+      onPick: async ([file]) => {
+        if (!confirm(t('importConfirm'))) return;
+        try {
+          profile = await Store.importBundle(await file.text());
+          for (const id of [...objectUrls.keys()]) forgetUrl(id);
+          meta = { changedAt: Date.now(), exportedAt: Date.now() };
+          await Store.setMeta(meta);
+          renderEditor();
+          $('backup-msg').className = 'toast-ok';
+          $('backup-msg').textContent = t('imported');
+        } catch {
+          msg.className = 'error-msg';
+          msg.textContent = t('importError');
+        }
+      },
+    });
+    return panel(t('backup'), t('backupHint'),
+      el('p', { id: 'backup-state', class: 'backup-state' }),
+      el('div', { class: 'row' },
+        el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: exportCopy }, t('exportBtn')),
+        el('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => picker.click() }, t('importBtn')),
+        msg, picker));
+  }
+  function renderBackupState() {
+    const n = $('backup-state');
+    if (!n) return;
+    const df = new Intl.DateTimeFormat(langMeta(ui).locale, { dateStyle: 'medium', timeStyle: 'short' });
+    if (!meta.exportedAt) { n.className = 'backup-state warn'; n.textContent = t('neverExported'); }
+    else if ((meta.changedAt || 0) > meta.exportedAt) {
+      n.className = 'backup-state warn';
+      n.textContent = `${t('notExported')} ${t('lastExport')} ${df.format(meta.exportedAt)}`;
+    } else { n.className = 'backup-state ok'; n.textContent = `${t('lastExport')} ${df.format(meta.exportedAt)}`; }
+  }
+  async function exportCopy() {
+    const btns = [$('export-bar'), ...document.querySelectorAll('.panel .btn-primary')].filter(Boolean);
+    try {
+      await persist();
+      $('export-bar').textContent = t('exporting');
+      const blob = await Store.exportBundle(profile);
+      const a = el('a', { href: URL.createObjectURL(blob), download: `biglietto-${new Date().toISOString().slice(0, 10)}.json` });
+      document.body.append(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      meta.exportedAt = Date.now();
+      await Store.setMeta(meta);
+      renderBackupState();
+    } catch {
+      setStatus('error');
+    } finally {
+      $('export-bar').textContent = t('exportBtn');
+      btns.forEach(b => { b.disabled = false; });
+    }
+  }
+
   function photoPanel() {
     const name = BV.pick(profile.name, contentLang);
     const msg = el('span', { class: 'muted' });
+    const avatar = el('div', { class: 'avatar' }, el('span', { class: 'initials', text: (name || '?')[0].toUpperCase() }));
+    fileUrl(profile.photo).then(u => { if (u) avatar.replaceChildren(el('img', { src: u, alt: '' })); });
     const picker = filePicker({
       accept: 'image/*',
       onPick: async ([file]) => {
         msg.className = 'muted'; msg.textContent = t('uploading');
         try {
           const blob = await resizeImage(file);
-          const res = await api('POST', '/api/upload', { kind: 'photo', type: 'image/jpeg', name: 'photo.jpg', data: await readBase64(blob) });
-          mergeUploads(res);
+          const id = Store.newId();
+          await Store.putFile(id, blob);
+          if (profile.photo) { await Store.deleteFile(profile.photo); forgetUrl(profile.photo); }
+          profile.photo = id;
+          await persist();
           renderEditor();
         } catch { msg.className = 'error-msg'; msg.textContent = t('uploadError'); }
       },
     });
-    const photo = safeUrl(profile.photo);
     return panel(t('photo'), t('photoHint'),
-      el('div', { class: 'photo-edit' },
-        el('div', { class: 'avatar' }, photo
-          ? el('img', { src: photo, alt: '' })
-          : el('span', { class: 'initials', text: (name || '?')[0].toUpperCase() })),
+      el('div', { class: 'photo-edit' }, avatar,
         el('div', { class: 'row' },
-          el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => picker.click() }, t(photo ? 'changePhoto' : 'uploadPhoto')),
-          photo ? el('button', {
+          el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => picker.click() }, t(profile.photo ? 'changePhoto' : 'uploadPhoto')),
+          profile.photo ? el('button', {
             class: 'btn btn-danger btn-sm', type: 'button',
-            onclick: async () => { try { mergeUploads(await api('DELETE', '/api/photo')); renderEditor(); } catch {} },
+            onclick: async () => {
+              await Store.deleteFile(profile.photo); forgetUrl(profile.photo);
+              profile.photo = null; await persist(); renderEditor();
+            },
           }, t('removePhoto')) : null,
           msg, picker)));
   }
@@ -173,11 +227,11 @@
         const select = el('select', { class: 'input', 'aria-label': t('platform') },
           PLATFORM_ORDER.map(p => el('option', { value: p, selected: p === l.platform }, BV.platformLabel(ui, p))));
         select.style.width = 'auto';
-        select.addEventListener('change', () => { l.platform = select.value; markDirty(); });
+        select.addEventListener('change', () => { l.platform = select.value; l.url = normalizeLink(l); markDirty(); });
         const url = el('input', { class: 'input grow', dir: 'ltr', placeholder: t('url'), 'aria-label': t('url'), maxlength: 500 });
         url.value = l.url || '';
         url.addEventListener('input', () => { l.url = url.value; markDirty(); });
-        url.addEventListener('blur', () => { l.url = normalizeLink(l); url.value = l.url; });
+        url.addEventListener('blur', () => { l.url = normalizeLink(l); url.value = l.url; markDirty(); });
         return el('div', { class: 'row' }, select, url,
           el('button', { class: 'btn btn-danger btn-sm', type: 'button', onclick: () => { profile.links.splice(i, 1); markDirty(); draw(); } }, t('remove')));
       }) : [el('p', { class: 'empty', text: t('noLinks') })]));
@@ -212,7 +266,7 @@
       el('button', {
         class: 'btn btn-ghost btn-sm', type: 'button',
         onclick: () => {
-          profile.posts.unshift({ id: '', date: new Date().toISOString().slice(0, 10), title: { it: '', en: '', fa: '' }, body: { it: '', en: '', fa: '' } });
+          profile.posts.unshift({ id: Store.newId(), date: new Date().toISOString().slice(0, 10), title: L(), body: L() });
           markDirty(); draw(); list.querySelector('.item input:not([type=date])')?.focus();
         },
       }, '+ ' + t('addPost')),
@@ -225,26 +279,34 @@
       multiple: true,
       onPick: async files => {
         for (const file of files) {
-          if (file.size > 20 * 1024 * 1024) { msg.className = 'error-msg'; msg.textContent = `${file.name}: ${t('tooBig')}`; continue; }
+          if (file.size > MAX_FILE) { msg.className = 'error-msg'; msg.textContent = `${file.name}: ${t('tooBig')}`; continue; }
           msg.className = 'muted'; msg.textContent = `${t('uploading')} ${file.name}`;
           try {
-            mergeUploads(await api('POST', '/api/upload', { kind: 'file', name: file.name, type: file.type, data: await readBase64(file) }));
-          } catch { msg.className = 'error-msg'; msg.textContent = `${file.name}: ${t('uploadError')}`; return; }
+            const id = Store.newId();
+            await Store.putFile(id, file);
+            const base = file.name.replace(/\.[^.]+$/, '');
+            profile.files.push({ id, name: file.name, size: file.size, type: file.type, title: { it: base, en: base, fa: base } });
+          } catch { msg.className = 'error-msg'; msg.textContent = `${file.name}: ${t('uploadError')}`; }
         }
+        await persist();
         renderEditor();
       },
     });
-    const items = profile.files.map(f => el('div', { class: 'item' },
-      el('div', { class: 'item-head' },
-        el('a', { class: 'file-meta', href: safeUrl(f.url), target: '_blank', rel: 'noopener' }, `${f.name} · ${fileSize(f.size, ui)}`),
-        el('button', {
-          class: 'btn btn-danger btn-sm', type: 'button',
-          onclick: async () => {
-            if (!confirm(t('confirmDelete'))) return;
-            try { mergeUploads(await api('DELETE', '/api/files/' + f.id)); renderEditor(); } catch {}
-          },
-        }, t('remove'))),
-      locField(f, 'title', t('fileTitle'), { max: 200 })));
+    const items = profile.files.map((f, i) => {
+      const link = el('a', { class: 'file-meta', target: '_blank', rel: 'noopener' }, `${f.name} · ${fileSize(f.size, ui)}`);
+      fileUrl(f.id).then(u => { if (u) link.href = u; });
+      return el('div', { class: 'item' },
+        el('div', { class: 'item-head' }, link,
+          el('button', {
+            class: 'btn btn-danger btn-sm', type: 'button',
+            onclick: async () => {
+              if (!confirm(t('confirmDelete'))) return;
+              await Store.deleteFile(f.id); forgetUrl(f.id);
+              profile.files.splice(i, 1); await persist(); renderEditor();
+            },
+          }, t('remove'))),
+        locField(f, 'title', t('fileTitle'), { max: 200 }));
+    });
     return panel(t('files'), t('filesHint'),
       el('div', { class: 'row' },
         el('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => picker.click() }, '+ ' + t('uploadFiles')),
@@ -252,35 +314,14 @@
       el('div', { class: 'list' }, items.length ? items : el('p', { class: 'empty', text: t('noFiles') })));
   }
 
-  function securityPanel() {
-    const cur = el('input', { class: 'input', type: 'password', autocomplete: 'current-password', dir: 'ltr' });
-    const next = el('input', { class: 'input', type: 'password', autocomplete: 'new-password', minlength: 8, dir: 'ltr' });
-    const msg = el('p', { class: 'error-msg', role: 'status' });
-    const form = el('form', { class: 'list' },
-      el('div', { class: 'grid-2' }, field(t('currentPassword'), cur), field(t('newPassword'), next)),
-      el('div', { class: 'row' }, el('button', { class: 'btn btn-ghost btn-sm', type: 'submit' }, t('changePassword')), msg));
-    form.addEventListener('submit', async e => {
-      e.preventDefault();
-      try {
-        await api('POST', '/api/password', { current: cur.value, next: next.value });
-        cur.value = next.value = '';
-        msg.className = 'toast-ok'; msg.textContent = t('passwordChanged');
-      } catch (err) {
-        msg.className = 'error-msg';
-        msg.textContent = err.message === 'wrong_password' ? t('wrongPassword') : t('passwordError');
-      }
-    });
-    return panel(t('security'), null, form);
-  }
-
   function renderEditor() {
     if (!profile) return;
     $('content-langs').replaceChildren(BV.langSwitch(contentLang, code => { contentLang = code; renderEditor(); }));
     $('editor-body').replaceChildren(
-      photoPanel(), profilePanel(), contactsPanel(), linksPanel(), postsPanel(), filesPanel(), securityPanel());
+      backupPanel(), photoPanel(), profilePanel(), contactsPanel(), linksPanel(), postsPanel(), filesPanel());
+    renderBackupState();
   }
 
-  // ---------- viste ----------
   function applyUi() {
     BV.applyDocLang(ui);
     document.title = t('adminTitle');
@@ -289,46 +330,24 @@
       applyUi(); setStatus(status); renderEditor();
     }));
   }
-  function showLogin() {
-    profile = null;
-    $('editor').classList.add('hidden');
-    $('savebar').classList.add('hidden');
-    $('login').classList.remove('hidden');
-    $('login-pw').focus();
-  }
-  async function showEditor() {
-    profile = await api('GET', '/api/profile');
-    $('login').classList.add('hidden');
-    $('editor').classList.remove('hidden');
-    $('savebar').classList.remove('hidden');
-    setStatus('saved');
-    renderEditor();
-  }
 
-  $('login-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    $('login-error').textContent = '';
-    try {
-      await api('POST', '/api/login', { password: $('login-pw').value });
-      $('login-pw').value = '';
-      await showEditor();
-    } catch (err) {
-      $('login-error').textContent = t(err.status === 429 ? 'tooMany' : 'wrongPassword');
-    }
-  });
-  $('logout').addEventListener('click', async () => {
-    if (status === 'dirty' && !confirm(t('leaveWarning'))) return;
-    try { await api('POST', '/api/logout', {}); } catch {}
-    showLogin();
-  });
-  $('save').addEventListener('click', save);
+  $('export-bar').addEventListener('click', exportCopy);
   document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && profile) { e.preventDefault(); save(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); persist(); }
   });
-  window.addEventListener('beforeunload', e => { if (status === 'dirty' || status === 'error') { e.preventDefault(); e.returnValue = ''; } });
+  // Se si chiude la pagina durante il salvataggio, chiede conferma.
+  window.addEventListener('beforeunload', e => { if (status === 'saving') { e.preventDefault(); e.returnValue = ''; } });
 
-  applyUi();
-  api('GET', '/api/me')
-    .then(me => (me.authed ? showEditor() : showLogin()))
-    .catch(showLogin);
+  (async () => {
+    applyUi();
+    try {
+      navigator.storage?.persist?.(); // chiede al browser di non cancellare i dati da solo
+      [profile, meta] = await Promise.all([Store.loadDraft(), Store.getMeta()]);
+      setStatus('saved');
+      renderEditor();
+    } catch {
+      setStatus('error');
+      $('editor-body').replaceChildren(el('p', { class: 'state', text: t('saveError') }));
+    }
+  })();
 })();

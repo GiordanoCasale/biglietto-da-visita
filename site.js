@@ -122,12 +122,31 @@
     $('copy').textContent = `© ${new Date().getFullYear()} ${pick(profile.name, lang)}`;
   }
 
+  // ?anteprima → bozza salvata in questo browser; altrimenti la versione pubblicata.
+  const isPreview = new URLSearchParams(location.search).has('anteprima');
+
+  async function loadDraft() {
+    const p = await window.Store.loadDraft();
+    const url = async id => { const b = id && await window.Store.getFile(id); return b ? URL.createObjectURL(b) : null; };
+    p.photo = await url(p.photo);
+    for (const f of p.files) f.url = await url(f.id);
+    p.files = p.files.filter(f => f.url);
+    return p;
+  }
+  async function loadPublished() {
+    const r = await fetch('content/profile.json', { cache: 'no-cache' });
+    if (r.status === 404) return null;   // non ancora pubblicato
+    if (!r.ok) throw new Error(r.status);
+    return window.Store.normalize(await r.json());
+  }
+
   render();
-  fetch('/api/profile')
-    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+  (isPreview ? loadDraft() : loadPublished())
     .then(data => {
-      profile = data;
       $('state').classList.add('hidden');
+      $('preview-banner').classList.toggle('hidden', !isPreview);
+      if (!data) { $('soon').classList.remove('hidden'); return; }
+      profile = data;
       $('content').classList.remove('hidden');
       render();
     })
